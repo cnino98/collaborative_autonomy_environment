@@ -26,7 +26,16 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, (update_target, update_agent).chain())
+        .add_systems(
+            FixedUpdate,
+            (
+                update_target,
+                update_goal,
+                update_agent,
+                sync_kinematic_state_to_transforms,
+            )
+                .chain(),
+        )
         .run();
 }
 
@@ -39,6 +48,12 @@ struct Target;
 #[derive(Component)]
 struct Goal;
 
+#[derive(Component)]
+struct KinematicState {
+    position: Vec2,
+    velocity: Vec2,
+}
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -46,77 +61,122 @@ fn setup(
 ) {
     commands.spawn(Camera2d);
 
+    // Target entity
     commands.spawn((
         Mesh2d(meshes.add(Circle::default())),
         MeshMaterial2d(materials.add(TARGET_COLOR)),
         Transform::from_translation(TARGET_STARTING_POSITION)
             .with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
+        KinematicState {
+            position: TARGET_STARTING_POSITION.truncate(),
+            velocity: Vec2::ZERO,
+        },
         Target,
     ));
 
+    // Agent entity
     commands.spawn((
         Mesh2d(meshes.add(Triangle2d::default())),
         MeshMaterial2d(materials.add(AGENT_COLOR)),
         Transform::from_translation(AGENT_STARTING_POSITION)
             .with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
+        KinematicState {
+            position: AGENT_STARTING_POSITION.truncate(),
+            velocity: Vec2::ZERO,
+        },
         Agent,
     ));
 
+    // Goal entity
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::default())),
         MeshMaterial2d(materials.add(GOAL_COLOR)),
         Transform::from_translation(GOAL_LOCATION)
             .with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
+        KinematicState {
+            position: GOAL_LOCATION.truncate(),
+            velocity: Vec2::ZERO,
+        },
         Goal,
     ));
 }
 
-fn target_flee_speed(distance: f32) -> f32 {
-    TARGET_MIN_SPEED
-        + (TARGET_MAX_SPEED - TARGET_MIN_SPEED) * (-distance / REPULSION_DECAY_LENGTH).exp()
-}
-
-fn update_target(
-    mut target_transform: Single<&mut Transform, (With<Target>, Without<Agent>, Without<Goal>)>,
-    agent_transform: Single<&Transform, (With<Agent>, Without<Target>, Without<Goal>)>,
-    time: Res<Time>,
-) {
-    let target_position = target_transform.translation.truncate();
-    let agent_position = agent_transform.translation.truncate();
-
+fn target_dynamics(target_position: Vec2, agent_position: Vec2) -> Vec2 {
     let away_from_agent = target_position - agent_position;
     let direction = away_from_agent.normalize_or_zero();
     let distance = away_from_agent.length();
 
-    let speed = target_flee_speed(distance);
-    let target_velocity = direction * speed;
+    let speed = TARGET_MIN_SPEED
+        + (TARGET_MAX_SPEED - TARGET_MIN_SPEED) * (-distance / REPULSION_DECAY_LENGTH).exp();
 
-    let new_target_position = target_position + target_velocity * time.delta_secs();
-
-    target_transform.translation.x = new_target_position.x;
-    target_transform.translation.y = new_target_position.y;
+    direction * speed
 }
 
-fn update_agent(
-    mut agent_transform: Single<&mut Transform, (With<Agent>, Without<Target>, Without<Goal>)>,
-    target_transform: Single<&Transform, (With<Target>, Without<Agent>, Without<Goal>)>,
-    goal_transform: Single<&Transform, (With<Goal>, Without<Agent>, Without<Target>)>,
-    time: Res<Time>,
-) {
-    let agent_position = agent_transform.translation.truncate();
-    let target_position = target_transform.translation.truncate();
-    let goal_position = goal_transform.translation.truncate();
+fn goal_dynamics(_goal_position: Vec2) -> Vec2 {
+    Vec2::ZERO
+}
 
+fn agent_dynamics(agent_position: Vec2, target_position: Vec2, goal_position: Vec2) -> Vec2 {
     let e = target_position - goal_position;
     let a = K1 / F_LOWER;
     let x_d = target_position + a * e;
     let r = x_d - agent_position;
 
     let control_gain = (1.0 + a) * F_UPPER + K2;
-    let u = (control_gain * r).clamp_length_max(MAX_AGENT_SPEED);
 
-    let new_agent_position = agent_position + u * time.delta_secs();
+    (control_gain * r).clamp_length_max(MAX_AGENT_SPEED)
+}
 
-    agent_transform.translation.x = new_agent_position.x;
-    agent_transform.translation.y = new_agent_position.y;
+fn integrate_position(position: Vec2, velocity: Vec2, dt: f32) -> Vec2 {
+    position + velocity * dt
+}
+
+fn update_target(
+    mut target_state: Single<&mut KinematicState, (With<Target>, Without<Agent>)>,
+    agent_state: Single<&KinematicState, (With<Agent>, Without<Target>)>,
+    time: Res<Time>,
+) {
+    let dt = time.delta_secs();
+
+    let target_velocity = target_dynamics(target_state.position, agent_state.position);
+
+    target_state.velocity = target_velocity;
+    target_state.position = integrate_position(target_state.position, target_state.velocity, dt);
+}
+
+fn update_goal(
+    mut goal_state: Single<&mut KinematicState, With<Goal>>,
+    time: Res<Time>,
+) {
+    let dt = time.delta_secs();
+
+    let goal_velocity = goal_dynamics(goal_state.position);
+
+    goal_state.velocity = goal_velocity;
+    goal_state.position = integrate_position(goal_state.position, goal_state.velocity, dt);
+}
+
+fn update_agent(
+    mut agent_state: Single<&mut KinematicState, (With<Agent>, Without<Target>, Without<Goal>)>,
+    target_state: Single<&KinematicState, (With<Target>, Without<Agent>)>,
+    goal_state: Single<&KinematicState, (With<Goal>, Without<Agent>)>,
+    time: Res<Time>,
+) {
+    let dt = time.delta_secs();
+
+    let agent_velocity = agent_dynamics(
+        agent_state.position,
+        target_state.position,
+        goal_state.position,
+    );
+
+    agent_state.velocity = agent_velocity;
+    agent_state.position = integrate_position(agent_state.position, agent_state.velocity, dt);
+}
+
+fn sync_kinematic_state_to_transforms(mut query: Query<(&KinematicState, &mut Transform)>) {
+    for (state, mut transform) in &mut query {
+        transform.translation.x = state.position.x;
+        transform.translation.y = state.position.y;
+    }
 }

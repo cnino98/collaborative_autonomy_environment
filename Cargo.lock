@@ -1872,6 +1872,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "collaborative_autonomy_environment"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3236,13 +3243,6 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
-]
-
-[[package]]
-name = "my_bevy_game"
-version = "0.1.0"
-dependencies = [
- "bevy",
 ]
 
 [[package]]
