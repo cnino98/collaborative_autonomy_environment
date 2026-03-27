@@ -14,6 +14,8 @@ const TARGET_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 const PROPORTIONAL_GAIN: f32 = 1.0;
 const MAX_AGENT_SPEED: f32 = 140.0;
 
+const TOLERANCE: f32 = 5.0;
+
 // Main simulation loop
 fn main() {
     App::new()
@@ -45,6 +47,17 @@ struct Velocity {
     value: Vec2,
 }
 
+#[derive(Component)]
+enum BehaviorPrimitive {
+    Idle, 
+    GoTo {destination: Vec2},
+}
+
+enum GuidanceCommand{
+    Hold,
+    MoveTo{destination: Vec2},
+}
+
 // Setup
 fn spawn_world_entities(
     mut commands: Commands,
@@ -58,8 +71,9 @@ fn spawn_world_entities(
         MeshMaterial2d(materials.add(AGENT_COLOR)),
         Transform::from_translation(AGENT_INITIAL_POSITION).with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
         Agent,
-        Position{value:AGENT_INITIAL_POSITION.truncate(),},
+        Position{value:AGENT_INITIAL_POSITION.truncate()},
         Velocity{value:Vec2::ZERO},
+        BehaviorPrimitive::GoTo{destination:TARGET_INITIAL_POSITION.truncate()},
     ));
 
     commands.spawn((
@@ -67,29 +81,64 @@ fn spawn_world_entities(
         MeshMaterial2d(materials.add(TARGET_COLOR)),
         Transform::from_translation(TARGET_INITIAL_POSITION).with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
         Target,
-        Position{value:TARGET_INITIAL_POSITION.truncate(),},
+        Position{value:TARGET_INITIAL_POSITION.truncate()},
     ));
 }
 
 // Simulation
-fn advance_position(position: Vec2, velocity: Vec2, delta_seconds: f32) -> Vec2 {
-    position + velocity * delta_seconds
-}
-
 fn update_simulation(
-    target_position: Single<&Position, (With<Target>, Without<Agent>)>,
     mut agent_position: Single<&mut Position, (With<Agent>, Without<Target>)>,
     mut agent_velocity: Single<&mut Velocity, With<Agent>>,
+    mut current_behavior: Single<&mut BehaviorPrimitive, With<Agent>>,
     time: Res<Time>,
 ) {
-    agent_velocity.value = compute_agent_velocity(agent_position.value, target_position.value);
-    agent_position.value = advance_position(agent_position.value, agent_velocity.value, time.delta_secs());
+    // Behavior -> Guidance -> Control
+    let active_behavior: BehaviorPrimitive = transition_behavior(&current_behavior, agent_position.value);
+    let guidance: GuidanceCommand = compute_guidance_command(&active_behavior);
+    let commanded_velocity: Vec2 = compute_velocity_command(guidance, agent_position.value);
+    let next_position: Vec2 = integrate_position(agent_position.value, commanded_velocity, time.delta_secs());
+
+    // Update variables
+    **current_behavior = active_behavior;
+    agent_velocity.value = commanded_velocity;
+    agent_position.value = next_position;
+        
 }
 
-fn compute_agent_velocity(agent_position: Vec2, target_position: Vec2) -> Vec2 {
-    let tracking_error: Vec2 = target_position - agent_position;
-    let control_output: Vec2 = PROPORTIONAL_GAIN * tracking_error;
-    control_output.clamp_length_max(MAX_AGENT_SPEED)
+fn transition_behavior(behavior: &BehaviorPrimitive, agent_position: Vec2) -> BehaviorPrimitive {
+    match behavior {
+        BehaviorPrimitive::Idle => BehaviorPrimitive::Idle,
+        BehaviorPrimitive::GoTo { destination } => {
+            let distance = agent_position.distance(*destination);
+            if distance < TOLERANCE {
+                BehaviorPrimitive::Idle
+            } else {
+                BehaviorPrimitive::GoTo { destination: *destination }
+            }
+        }
+    }
+}
+
+fn compute_guidance_command(behavior: &BehaviorPrimitive) -> GuidanceCommand {
+    match behavior{
+        BehaviorPrimitive::Idle => GuidanceCommand::Hold,
+        BehaviorPrimitive::GoTo{destination} => GuidanceCommand::MoveTo { destination: *destination }
+    }
+}
+
+fn compute_velocity_command(guidance: GuidanceCommand, agent_position: Vec2) -> Vec2 {
+    match guidance {
+        GuidanceCommand::Hold => Vec2::ZERO,
+        GuidanceCommand::MoveTo { destination } => {
+            let tracking_error: Vec2 = destination - agent_position;
+            let commanded_velocity: Vec2 = PROPORTIONAL_GAIN * tracking_error;
+            commanded_velocity.clamp_length_max(MAX_AGENT_SPEED)
+        }
+    }
+}
+
+fn integrate_position(position: Vec2, velocity: Vec2, dt: f32) -> Vec2 {
+    position + velocity * dt
 }
 
 // Render
