@@ -13,7 +13,6 @@ const TARGET_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 
 const PROPORTIONAL_GAIN: f32 = 1.0;
 const MAX_AGENT_SPEED: f32 = 140.0;
-
 const TOLERANCE: f32 = 5.0;
 
 // Main simulation loop
@@ -21,11 +20,19 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(BACKGROUND_COLOR))
-        .add_systems(Startup, spawn_world_entities)
+        .add_systems(Startup, 
+            (
+                startup_world,
+                startup_simulation,
+                startup_render
+            ).chain())
         .add_systems(FixedUpdate, update_simulation)
         .add_systems(
             RunFixedMainLoop,
-            update_render.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+            (
+                update_render,
+                update_ui,
+            ).in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
         )
         .run();
 }
@@ -59,13 +66,11 @@ enum GuidanceCommand{
 }
 
 // Setup
-fn spawn_world_entities(
+fn startup_simulation(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    commands.spawn(Camera2d);
-
     commands.spawn((
         Mesh2d(meshes.add(Triangle2d::default())),
         MeshMaterial2d(materials.add(AGENT_COLOR)),
@@ -82,6 +87,23 @@ fn spawn_world_entities(
         Transform::from_translation(TARGET_INITIAL_POSITION).with_scale(Vec2::splat(ENTITY_DIAMETER).extend(1.0)),
         Target,
         Position{value:TARGET_INITIAL_POSITION.truncate()},
+    ));
+}
+
+fn startup_world(mut commands: Commands){
+    commands.spawn(Camera2d);
+}
+
+fn startup_render(mut commands: Commands){
+    commands.spawn((
+        Text::default(),
+        TextColor(Color::srgb(0.0, 0.0, 0.0)),
+        Node{
+            position_type: PositionType::Absolute,
+            top: px(12),
+            left: px(12),
+            ..default()
+        },
     ));
 }
 
@@ -154,4 +176,18 @@ fn update_render(
 
 fn update_transform(transform: &mut Transform, position: Vec2) {
     transform.translation = position.extend(transform.translation.z);
+}
+
+// UI
+fn update_ui(
+    mut text: Single<&mut Text>,
+    current_behavior: Single<&BehaviorPrimitive, With<Agent>>,
+) {
+    text.0 = "Agent State: ".to_string();
+    match &*current_behavior {
+        BehaviorPrimitive::Idle => text.push_str("Idle"),
+        BehaviorPrimitive::GoTo { destination } => {
+            text.push_str(&format!("GoTo ({:.1}, {:.1})", destination.x, destination.y));
+        }
+    }
 }
