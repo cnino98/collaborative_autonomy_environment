@@ -79,6 +79,9 @@ struct Agent;
 struct Target;
 
 #[derive(Component)]
+struct SelectedTarget;
+
+#[derive(Component)]
 struct BehaviorStatusText;
 
 #[derive(Component)]
@@ -182,6 +185,7 @@ fn spawn_simulation_entities(
         Transform::from_translation(Vec3 { x: (0.0), y: (0.0), z: (1.0) })
             .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
         Target,
+        SelectedTarget,
         WorldPosition {
             coordinates: Vec2 { x: (0.0), y: (0.0) },
         },
@@ -480,7 +484,7 @@ fn handle_behavior_selection_buttons(
         (Changed<Interaction>, With<Button>),
     >,
     agent_entity: Single<Entity, With<Agent>>,
-    target_world_position: Single<&WorldPosition, With<Target>>,
+    selected_target_world_position: Single<&WorldPosition, (With<Target>, With<SelectedTarget>)>,
     mut behavior_change_writer: MessageWriter<BehaviorChangeMessage>,
 ) {
     for (
@@ -495,7 +499,7 @@ fn handle_behavior_selection_buttons(
 
                 let requested_behavior = behavior_for_selection(
                     *behavior_selection,
-                    target_world_position.coordinates,
+                    selected_target_world_position.coordinates,
                 );
 
                 behavior_change_writer.write(BehaviorChangeMessage {
