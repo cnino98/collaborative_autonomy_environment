@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
 use crate::{
-    model::{Agent, LinearVelocity, Target, WorldPosition},
-    sim::integrate_world_position,
+    motion::integrate_world_position,
+    world::{Agent, LinearVelocity, Target, WorldPosition},
 };
 
 pub fn advance_target_simulation(

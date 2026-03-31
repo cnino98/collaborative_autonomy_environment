@@ -1,9 +1,8 @@
 use bevy::prelude::*;
 
-use crate::{
-    constants::{AGENT_MAX_SPEED, VELOCITY_COMMAND_GAIN},
-    model::GuidanceCommand,
-};
+use crate::constants::{AGENT_MAX_SPEED, VELOCITY_COMMAND_GAIN};
+
+use super::GuidanceCommand;
 
 pub fn velocity_command_for_guidance(
     guidance_command: GuidanceCommand,
@@ -22,12 +21,4 @@ pub fn velocity_command_for_guidance(
             desired_velocity.clamp_length_max(AGENT_MAX_SPEED)
         }
     }
-}
-
-pub fn integrate_world_position(
-    current_world_position: Vec2,
-    commanded_velocity: Vec2,
-    delta_seconds: f32,
-) -> Vec2 {
-    current_world_position + commanded_velocity * delta_seconds
 }

@@ -1,14 +1,22 @@
 use bevy::prelude::*;
 
-use crate::model::{Behavior, BehaviorStatusText, Agent, WorldPosition};
+use crate::{agent::Behavior, world::Agent};
 
-pub fn sync_world_positions_to_transforms(
-    mut positioned_entities: Query<(&WorldPosition, &mut Transform)>,
-) {
-    for (world_position, mut transform) in &mut positioned_entities {
-        transform.translation =
-            world_position.coordinates.extend(transform.translation.z);
-    }
+#[derive(Component)]
+pub struct BehaviorStatusText;
+
+pub fn spawn_behavior_status_text(commands: &mut Commands) {
+    commands.spawn((
+        BehaviorStatusText,
+        Text::default(),
+        TextColor(Color::BLACK),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(12),
+            left: px(12),
+            ..default()
+        },
+    ));
 }
 
 pub fn update_active_behavior_status_text(

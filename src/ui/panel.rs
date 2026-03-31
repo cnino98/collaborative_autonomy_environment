@@ -1,37 +1,11 @@
 use bevy::prelude::*;
 
 use crate::{
-    constants::{
-        DEFAULT_BUTTON_COLOR,
-        HOVERED_BUTTON_COLOR,
-        PRESSED_BUTTON_COLOR,
-    },
-    model::{
-        Agent,
-        BehaviorChange,
-        BehaviorChangeMessage,
-        BehaviorSelection,
-        BehaviorStatusText,
-        SelectedTarget,
-        Target,
-        WorldPosition,
-    },
-    sim::behavior_from_selection,
+    constants::DEFAULT_BUTTON_COLOR,
+    input::BehaviorSelection,
 };
 
-pub fn spawn_ui(mut commands: Commands) {
-    commands.spawn((
-        BehaviorStatusText,
-        Text::default(),
-        TextColor(Color::BLACK),
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(12),
-            left: px(12),
-            ..default()
-        },
-    ));
-
+pub fn spawn_behavior_panel(commands: &mut Commands) {
     commands
         .spawn((
             Node {
@@ -76,60 +50,4 @@ pub fn spawn_ui(mut commands: Commands) {
                     });
             }
         });
-}
-
-pub fn handle_behavior_selection_buttons(
-    mut button_interactions: Query<
-        (&Interaction, &BehaviorSelection, &mut BackgroundColor),
-        (Changed<Interaction>, With<Button>),
-    >,
-    agent_entity: Single<Entity, With<Agent>>,
-    selected_target_world_position: Single<&WorldPosition, (With<Target>, With<SelectedTarget>)>,
-    mut behavior_change_writer: MessageWriter<BehaviorChangeMessage>,
-) {
-    for (interaction_state, behavior_selection, mut button_background_color) in
-        &mut button_interactions
-    {
-        match *interaction_state {
-            Interaction::Pressed => {
-                *button_background_color = PRESSED_BUTTON_COLOR.into();
-
-                let requested_behavior = behavior_from_selection(
-                    *behavior_selection,
-                    selected_target_world_position.coordinates,
-                );
-
-                behavior_change_writer.write(BehaviorChangeMessage {
-                    agent_entity: *agent_entity,
-                    behavior_change: BehaviorChange::SetBehavior(requested_behavior),
-                });
-            }
-            Interaction::Hovered => {
-                *button_background_color = HOVERED_BUTTON_COLOR.into();
-            }
-            Interaction::None => {
-                *button_background_color = DEFAULT_BUTTON_COLOR.into();
-            }
-        }
-    }
-}
-
-pub fn handle_cursor_target_selection(
-    click: On<Pointer<Click>>,
-    targets: Query<(), With<Target>>,
-    old_target_entity: Single<Entity, (With<SelectedTarget>, With<Target>)>,
-    mut commands: Commands,
-) {
-    let clicked_entity = click.original_event_target();
-
-    if targets.get(clicked_entity).is_err() {
-        return;
-    }
-
-    if clicked_entity == *old_target_entity {
-        return;
-    }
-
-    commands.entity(*old_target_entity).remove::<SelectedTarget>();
-    commands.entity(clicked_entity).insert(SelectedTarget);
 }

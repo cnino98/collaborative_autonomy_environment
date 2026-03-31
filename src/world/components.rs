@@ -7,12 +7,6 @@ pub struct Agent;
 pub struct Target;
 
 #[derive(Component)]
-pub struct SelectedTarget;
-
-#[derive(Component)]
-pub struct BehaviorStatusText;
-
-#[derive(Component)]
 pub struct WorldPosition {
     pub coordinates: Vec2,
 }
