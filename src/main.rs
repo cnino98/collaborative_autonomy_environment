@@ -1,4 +1,8 @@
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    window::WindowResolution,
+    color::palettes::basic,
+};
 
 // -----------------------------------------------------------------------------
 // Global constants
@@ -7,11 +11,8 @@ use bevy::prelude::*;
 const ENTITY_RENDER_SIZE: f32 = 25.0;
 
 const AGENT_INITIAL_POSITION: Vec3 = Vec3::new(350.0, 150.0, 1.0);
-const TARGET_INITIAL_POSITION: Vec3 = Vec3::new(-100.0, -100.0, 1.0);
 
 const WORLD_BACKGROUND_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
-const AGENT_COLOR: Color = Color::srgb(0.3, 0.3, 0.7);
-const TARGET_COLOR: Color = Color::srgb(1.0, 0.5, 0.5);
 
 const VELOCITY_COMMAND_GAIN: f32 = 1.0;
 const AGENT_MAX_SPEED: f32 = 140.0;
@@ -23,12 +24,18 @@ const HOVERED_BUTTON_COLOR: Color = Color::srgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON_COLOR: Color = Color::srgb(0.35, 0.75, 0.35);
 
 // -----------------------------------------------------------------------------
-// App entry point
+// Main
 // -----------------------------------------------------------------------------
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                resolution: WindowResolution::new(3024,1964),
+                ..default()
+            }),
+            ..default()
+        }))
         .add_message::<BehaviorChangeMessage>()
         .insert_resource(ClearColor(WORLD_BACKGROUND_COLOR))
         .add_systems(
@@ -45,6 +52,7 @@ fn main() {
             (
                 apply_behavior_changes,
                 advance_agent_simulation,
+                advance_target_simulation,
             )
                 .chain(),
         )
@@ -102,10 +110,6 @@ enum BehaviorSelection {
     MoveAwayFrom,
 }
 
-// -----------------------------------------------------------------------------
-// Buffered behavior changes
-// -----------------------------------------------------------------------------
-
 #[derive(Message, Clone, Copy, Debug)]
 struct BehaviorChangeMessage {
     agent_entity: Entity,
@@ -140,9 +144,10 @@ fn spawn_simulation_entities(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    // Spawn agent
     commands.spawn((
         Mesh2d(meshes.add(Triangle2d::default())),
-        MeshMaterial2d(materials.add(AGENT_COLOR)),
+        MeshMaterial2d(materials.add(Color::from(basic::BLUE))),
         Transform::from_translation(AGENT_INITIAL_POSITION)
             .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
         Agent,
@@ -155,14 +160,30 @@ fn spawn_simulation_entities(
         Behavior::Idle,
     ));
 
+    // Spawn a moving target
     commands.spawn((
         Mesh2d(meshes.add(Circle::default())),
-        MeshMaterial2d(materials.add(TARGET_COLOR)),
-        Transform::from_translation(TARGET_INITIAL_POSITION)
+        MeshMaterial2d(materials.add(Color::from(basic::BLACK))),
+        Transform::from_translation(Vec3 { x: (-100.0), y: (-100.0), z: (1.0) })
             .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
         Target,
         WorldPosition {
-            coordinates: TARGET_INITIAL_POSITION.truncate(),
+            coordinates: Vec2 { x: (-100.0), y: (-100.0) },
+        },
+        LinearVelocity {
+            units_per_second: Vec2::ZERO,
+        },
+    ));
+
+    // Spawn a stationary target
+    commands.spawn((
+        Mesh2d(meshes.add(Circle::default())),
+        MeshMaterial2d(materials.add(Color::from(basic::RED))),
+        Transform::from_translation(Vec3 { x: (0.0), y: (0.0), z: (1.0) })
+            .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
+        Target,
+        WorldPosition {
+            coordinates: Vec2 { x: (0.0), y: (0.0) },
         },
     ));
 }
@@ -201,7 +222,7 @@ fn spawn_ui(mut commands: Commands) {
                     Button,
                     BehaviorSelection::Idle,
                     Node {
-                        width: px(120),
+                        width: px(200),
                         height: px(44),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
@@ -225,7 +246,7 @@ fn spawn_ui(mut commands: Commands) {
                     Button,
                     BehaviorSelection::MoveTo,
                     Node {
-                        width: px(120),
+                        width: px(200),
                         height: px(44),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
@@ -249,7 +270,7 @@ fn spawn_ui(mut commands: Commands) {
                     Button,
                     BehaviorSelection::MoveAwayFrom,
                     Node {
-                        width: px(120),
+                        width: px(200),
                         height: px(44),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
@@ -271,7 +292,7 @@ fn spawn_ui(mut commands: Commands) {
 }
 
 // -----------------------------------------------------------------------------
-// Fixed-step behavior update: apply requested changes to the authoritative state
+// Behavior
 // -----------------------------------------------------------------------------
 
 fn apply_behavior_changes(
@@ -300,8 +321,35 @@ fn behavior_after_applying_change(
 }
 
 // -----------------------------------------------------------------------------
-// Fixed-step simulation
+// Simulation
 // -----------------------------------------------------------------------------
+
+fn advance_target_simulation(
+    mut targets: Query<
+        (
+            &mut WorldPosition,
+            &mut LinearVelocity,
+        ),
+        (With<Target>, Without<Agent>),
+    >,
+    time: Res<Time>,
+){
+    for (mut world_position, mut linear_velocity) in &mut targets{
+        let commanded_velocity: Vec2 = target_dynamics(world_position.coordinates);
+        let next_world_position: Vec2 = integrate_world_position(
+            world_position.coordinates,
+            commanded_velocity,
+            time.delta_secs(),
+        );
+
+    linear_velocity.units_per_second = commanded_velocity;
+    world_position.coordinates = next_world_position;
+    }
+}
+
+fn target_dynamics(position: Vec2) -> Vec2 {
+    Vec2::new(-position.y, position.x)
+}
 
 fn advance_agent_simulation(
     mut agents: Query<
@@ -315,17 +363,17 @@ fn advance_agent_simulation(
     time: Res<Time>,
 ) {
     for (mut world_position, mut linear_velocity, mut current_behavior) in &mut agents {
-        let behavior_completion = evaluate_behavior_completion(
+        let behavior_completion: BehaviorCompletionStatus = evaluate_behavior_completion(
             *current_behavior,
             world_position.coordinates,
         );
-        let next_behavior = transition_behavior(*current_behavior, behavior_completion);
-        let guidance_command = guidance_command_for_behavior(next_behavior);
-        let commanded_velocity = velocity_command_for_guidance(
+        let next_behavior: Behavior = transition_behavior(*current_behavior, behavior_completion);
+        let guidance_command: GuidanceCommand = guidance_command_for_behavior(next_behavior);
+        let commanded_velocity: Vec2 = velocity_command_for_guidance(
             guidance_command,
             world_position.coordinates,
         );
-        let next_world_position = integrate_world_position(
+        let next_world_position: Vec2 = integrate_world_position(
             world_position.coordinates,
             commanded_velocity,
             time.delta_secs(),
