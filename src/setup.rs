@@ -13,6 +13,7 @@ use crate::{
         Target,
         WorldPosition,
     },
+    ui::panel::{handle_cursor_target_selection}
 };
 
 pub fn spawn_camera(mut commands: Commands) {
@@ -24,6 +25,7 @@ pub fn spawn_simulation_entities(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    // Spawn agent
     commands.spawn((
         Mesh2d(meshes.add(Triangle2d::default())),
         MeshMaterial2d(materials.add(Color::from(basic::BLUE))),
@@ -39,29 +41,34 @@ pub fn spawn_simulation_entities(
         Behavior::Idle,
     ));
 
+    // Spawn moving target
     commands.spawn((
         Mesh2d(meshes.add(Circle::default())),
         MeshMaterial2d(materials.add(Color::from(basic::BLACK))),
         Transform::from_translation(Vec3::new(-100.0, -100.0, 1.0))
             .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
         Target,
+        SelectedTarget,
         WorldPosition {
             coordinates: Vec2::new(-100.0, -100.0),
         },
         LinearVelocity {
             units_per_second: Vec2::ZERO,
         },
-    ));
+    ))
+    .observe(handle_cursor_target_selection);
 
+    // Spawn stationary target
     commands.spawn((
         Mesh2d(meshes.add(Circle::default())),
         MeshMaterial2d(materials.add(Color::from(basic::RED))),
         Transform::from_translation(Vec3::new(0.0, 0.0, 1.0))
             .with_scale(Vec2::splat(ENTITY_RENDER_SIZE).extend(1.0)),
         Target,
-        SelectedTarget,
         WorldPosition {
             coordinates: Vec2::new(0.0, 0.0),
         },
-    ));
+    ))
+    .observe(handle_cursor_target_selection);
+
 }

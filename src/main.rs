@@ -1,6 +1,7 @@
 use bevy::{
     prelude::*,
     window::WindowResolution,
+    picking::prelude::MeshPickingPlugin,
 };
 
 mod constants;
@@ -26,13 +27,16 @@ use ui::{
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+        .add_plugins(
+            (
+                DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 resolution: WindowResolution::new(3024, 1964),
                 ..default()
             }),
             ..default()
-        }))
+        }), MeshPickingPlugin::default())
+    )
         .add_message::<BehaviorChangeMessage>()
         .insert_resource(ClearColor(WORLD_BACKGROUND_COLOR))
         .add_systems(

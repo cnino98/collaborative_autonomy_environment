@@ -16,7 +16,7 @@ use crate::{
         Target,
         WorldPosition,
     },
-    sim::behavior_for_selection,
+    sim::behavior_from_selection,
 };
 
 pub fn spawn_ui(mut commands: Commands) {
@@ -94,7 +94,7 @@ pub fn handle_behavior_selection_buttons(
             Interaction::Pressed => {
                 *button_background_color = PRESSED_BUTTON_COLOR.into();
 
-                let requested_behavior = behavior_for_selection(
+                let requested_behavior = behavior_from_selection(
                     *behavior_selection,
                     selected_target_world_position.coordinates,
                 );
@@ -112,4 +112,24 @@ pub fn handle_behavior_selection_buttons(
             }
         }
     }
+}
+
+pub fn handle_cursor_target_selection(
+    click: On<Pointer<Click>>,
+    targets: Query<(), With<Target>>,
+    old_target_entity: Single<Entity, (With<SelectedTarget>, With<Target>)>,
+    mut commands: Commands,
+) {
+    let clicked_entity = click.original_event_target();
+
+    if targets.get(clicked_entity).is_err() {
+        return;
+    }
+
+    if clicked_entity == *old_target_entity {
+        return;
+    }
+
+    commands.entity(*old_target_entity).remove::<SelectedTarget>();
+    commands.entity(clicked_entity).insert(SelectedTarget);
 }

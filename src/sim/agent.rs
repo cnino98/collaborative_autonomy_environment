@@ -58,7 +58,7 @@ pub fn advance_agent_simulation(
     }
 }
 
-pub fn behavior_for_selection(
+pub fn behavior_from_selection(
     behavior_selection: BehaviorSelection,
     target_world_position: Vec2,
 ) -> Behavior {
